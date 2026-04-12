@@ -468,8 +468,8 @@ if __name__ == "__main__":
 
         trainer = Trainer(
             model=WhisperTransformerPhoneme(freeze_encoder=False),
-            train_loader=DataLoader(tr_ds,  batch_size=16, shuffle=True,  collate_fn=collate_fn),
-            val_loader  =DataLoader(val_ds, batch_size=16, shuffle=False, collate_fn=collate_fn),
+            train_loader=DataLoader(tr_ds,  batch_size=8, shuffle=True,  collate_fn=collate_fn),
+            val_loader  =DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate_fn),
             device=args.device,
             max_epochs=args.epochs,
         )

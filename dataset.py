@@ -25,6 +25,10 @@ HOP_LENGTH    = 320          # 20ms frame shift
 WIN_LENGTH    = 400          # 25ms frame length
 N_FFT         = 512
 
+# ── Giới hạn độ dài để tránh CUDA OOM ───────────────────────────────────────
+MAX_LABEL_LEN = 256   # số token âm vị tối đa (bao gồm <sot> và <eot>)
+MAX_MEL_FRAMES = 800  # số frame mel tối đa (~16s với hop=20ms)
+
 MEL_TRANSFORM = T.MelSpectrogram(
     sample_rate=SAMPLE_RATE,
     n_fft=N_FFT,
@@ -256,6 +260,8 @@ class SyntheticVietlishDataset(Dataset):
 def collate_fn(batch: list) -> dict:
     """
     Pad mel và labels về cùng độ dài trong batch.
+    Áp dụng cắt ngắn (truncation) theo MAX_MEL_FRAMES và MAX_LABEL_LEN
+    để tránh CUDA OOM do cross-attention trên chuỗi quá dài.
 
     Returns dict:
         mel_padded:    (B, T_max, 80)
@@ -268,6 +274,16 @@ def collate_fn(batch: list) -> dict:
 
     mels   = [item["mel"]    for item in batch]
     labels = [item["labels"] for item in batch]
+
+    # ── Truncate để tránh OOM ────────────────────────────────────────────────
+    mels   = [m[:MAX_MEL_FRAMES]   for m in mels]
+    # Giữ <sot> + nội dung + <eot>: cắt giữa, giữ lại eot ở cuối
+    def _truncate_label(l: torch.Tensor) -> torch.Tensor:
+        if l.shape[0] <= MAX_LABEL_LEN:
+            return l
+        return torch.cat([l[:MAX_LABEL_LEN - 1], l[-1:]])   # giữ <eot>
+    labels = [_truncate_label(l) for l in labels]
+    # ────────────────────────────────────────────────────────────────────────
 
     mel_lengths   = torch.tensor([m.shape[0] for m in mels],   dtype=torch.long)
     label_lengths = torch.tensor([l.shape[0] for l in labels], dtype=torch.long)
