@@ -60,12 +60,15 @@ class SinusoidalPositionalEncoding(nn.Module):
 class LearnedPositionalEncoding(nn.Module):
     """Positional encoding học được cho Decoder."""
 
-    def __init__(self, d_model: int, max_len: int = 512):
+    def __init__(self, d_model: int, max_len: int = 1024):
         super().__init__()
+        self.max_len = max_len
         self.pe = nn.Embedding(max_len, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        positions = torch.arange(x.size(1), device=x.device).unsqueeze(0)
+        seq_len = x.size(1)
+        # Clamp positions to [0, max_len-1] to prevent embedding index OOB
+        positions = torch.arange(seq_len, device=x.device).unsqueeze(0).clamp(max=self.max_len - 1)
         return x + self.pe(positions)
 
 
@@ -275,7 +278,7 @@ class PhonemeDecoder(nn.Module):
         n_heads:    int = 4,
         n_layers:   int = 6,
         ffn_dim:    int = 1024,
-        max_len:    int = 512,
+        max_len:    int = 1024,
         dropout:    float = 0.1,
         pad_idx:    int = 0,
     ):
