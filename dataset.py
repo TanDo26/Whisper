@@ -121,9 +121,15 @@ class PhonemeDatasetBase(Dataset):
         item = self.items[idx]
         audio_path = self.audio_root / item["audio"]
 
-        waveform, sr = torchaudio.load(str(audio_path))
+        import soundfile as sf
+        data, sr = sf.read(str(audio_path), dtype="float32")
+        waveform = torch.from_numpy(data)
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0)
+        else:
+            waveform = waveform.t()
         mel = audio_to_mel(waveform, sr)                  # (T, 80)
-        labels = encode_phonemes(item["phonemes"])         # (L,)
+        labels = encode_phonemes(item["phoneme"])         # (L,)
 
         return {
             "mel":    mel,

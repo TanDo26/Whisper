@@ -23,8 +23,31 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, random_split
 
 from phoneme_set import VOCAB, INV_VOCAB, SPECIAL_TOKENS, VOCAB_SIZE
-from dataset import SyntheticVietlishDataset, collate_fn
+from dataset import (
+    SyntheticVietlishDataset, 
+    VietnameseDataset, 
+    VietlishDataset, 
+    IEVDataset, 
+    PhonemeDatasetBase,
+    collate_fn
+)
 from model import WhisperTransformerPhoneme, WhisperGRUPhoneme, WhisperLSTMPhoneme
+
+
+def get_dataset(args, n_samples=None):
+    if args.dataset_type == "synthetic":
+        samples = n_samples if n_samples is not None else args.samples
+        return SyntheticVietlishDataset(n_samples=samples)
+    elif args.dataset_type == "vietnamese":
+        return VietnameseDataset(args.manifest_path, args.audio_root)
+    elif args.dataset_type == "vietlish":
+        return VietlishDataset(args.manifest_path, args.audio_root)
+    elif args.dataset_type == "iev":
+        return IEVDataset(args.manifest_path, args.audio_root)
+    elif args.dataset_type == "base":
+        return PhonemeDatasetBase(args.manifest_path, args.audio_root)
+    else:
+        raise ValueError(f"Unknown dataset_type: {args.dataset_type}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -311,18 +334,22 @@ class Trainer:
 #  4. SO SÁNH CÁC MÔ HÌNH (theo Table 2 & 3 trong paper)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def compare_models(device: str = "cpu", n_samples: int = 128, n_epochs: int = 3):
+def compare_models(args):
     """
-    Huấn luyện và so sánh 3 kiến trúc trên synthetic dataset.
+    Huấn luyện và so sánh 3 kiến trúc.
     Tái hiện Bảng 2 & 3 của paper.
     """
     print("\n" + "="*60)
     print(" So sánh các kiến trúc mô hình (Paper Table 2 & 3)")
     print("="*60)
 
-    ds    = SyntheticVietlishDataset(n_samples=n_samples)
-    n_val = max(16, n_samples // 5)
-    n_tr  = n_samples - n_val
+    ds = get_dataset(args)
+    total_samples = len(ds)
+    if args.dataset_type == "synthetic":
+        n_val = max(16, total_samples // 5)
+    else:
+        n_val = max(1, int(total_samples * 0.2))
+    n_tr  = total_samples - n_val
     train_ds, val_ds = random_split(ds, [n_tr, n_val])
 
     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True,  collate_fn=collate_fn)
@@ -341,8 +368,8 @@ def compare_models(device: str = "cpu", n_samples: int = 128, n_epochs: int = 3)
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
-            device=device,
-            max_epochs=n_epochs,
+            device=args.device,
+            max_epochs=args.epochs,
             save_dir="checkpoints",
             model_name=name.replace("-", "_").lower(),
         )
@@ -369,12 +396,16 @@ def compare_models(device: str = "cpu", n_samples: int = 128, n_epochs: int = 3)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def inference_demo(model: nn.Module, device: str = "cpu"):
-    """Demo inference với dữ liệu tổng hợp."""
+def inference_demo(model: nn.Module, args):
+    """Demo inference."""
+    device = args.device
     model.eval()
     model.to(device)
 
-    ds     = SyntheticVietlishDataset(n_samples=8)
+    if args.dataset_type == "synthetic":
+        ds = get_dataset(args, n_samples=8)
+    else:
+        ds = get_dataset(args)
     loader = DataLoader(ds, batch_size=4, collate_fn=collate_fn)
     batch  = next(iter(loader))
 
@@ -412,18 +443,28 @@ if __name__ == "__main__":
     parser.add_argument("--device",  default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--epochs",  type=int, default=5)
     parser.add_argument("--samples", type=int, default=64)
+    
+    parser.add_argument("--dataset_type", choices=["synthetic", "vietnamese", "vietlish", "iev", "base"], default="synthetic", help="Loại dataset: synthetic, vietnamese, vietlish, iev, base")
+    parser.add_argument("--manifest_path", type=str, default="dataset/manifest.jsonl", help="Đường dẫn tới file manifest")
+    parser.add_argument("--audio_root", type=str, default="dataset/", help="Đường dẫn tới thư   mục chứa audio")
+    
     args = parser.parse_args()
 
     print(f"Device: {args.device}")
 
     if args.mode == "demo":
         model = WhisperTransformerPhoneme(freeze_encoder=False)
-        inference_demo(model, args.device)
+        inference_demo(model, args)
 
     elif args.mode == "train":
-        ds      = SyntheticVietlishDataset(n_samples=args.samples)
-        n_val   = max(8, args.samples // 5)
-        tr_ds, val_ds = random_split(ds, [args.samples - n_val, n_val])
+        ds = get_dataset(args)
+        total_samples = len(ds)
+        if args.dataset_type == "synthetic":
+            n_val = max(8, total_samples // 5)
+        else:
+            n_val = max(1, int(total_samples * 0.2))
+        n_tr = total_samples - n_val
+        tr_ds, val_ds = random_split(ds, [n_tr, n_val])
 
         trainer = Trainer(
             model=WhisperTransformerPhoneme(freeze_encoder=False),
@@ -435,4 +476,4 @@ if __name__ == "__main__":
         trainer.fit()
 
     elif args.mode == "compare":
-        compare_models(device=args.device, n_samples=args.samples, n_epochs=args.epochs)
+        compare_models(args)
