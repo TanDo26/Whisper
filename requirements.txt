@@ -6,3 +6,4 @@ soundfile
 datasets
 kagglehub
 tqdm
+hf-transfer
