@@ -16,6 +16,7 @@ import json
 import argparse
 from pathlib import Path
 from typing import Optional
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -217,7 +218,8 @@ class Trainer:
         total_loss = 0.0
         n_batches  = 0
 
-        for batch in self.train_loader:
+        pbar = tqdm(self.train_loader, desc=f"Epoch {epoch} [Train]", leave=False)
+        for batch in pbar:
             mel          = batch["mel"].to(self.device)
             mel_lengths  = batch["mel_lengths"].to(self.device)
             labels       = batch["labels"].to(self.device)
@@ -235,6 +237,7 @@ class Trainer:
 
             total_loss += loss.item()
             n_batches  += 1
+            pbar.set_postfix({"loss": f"{loss.item():.4f}"})
 
         return total_loss / max(n_batches, 1)
 
@@ -246,7 +249,8 @@ class Trainer:
         all_refs   = []
         all_hyps   = []
 
-        for batch in self.val_loader:
+        pbar = tqdm(self.val_loader, desc="Evaluate [Val]", leave=False)
+        for batch in pbar:
             mel          = batch["mel"].to(self.device)
             mel_lengths  = batch["mel_lengths"].to(self.device)
             labels       = batch["labels"].to(self.device)
@@ -276,7 +280,7 @@ class Trainer:
 
     def fit(self):
         print(f"\n{'='*60}")
-        print(f" Huấn luyện: {self.model_name}")
+        print(f" Training: {self.model_name}")
         print(f" Device: {self.device} | Epochs: {self.max_epochs}")
         trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         print(f" Trainable params: {trainable:,}")
