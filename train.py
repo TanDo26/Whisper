@@ -445,7 +445,7 @@ if __name__ == "__main__":
     parser.add_argument("--samples", type=int, default=64)
     
     parser.add_argument("--dataset_type", choices=["synthetic", "vietnamese", "vietlish", "iev", "base"], default="synthetic", help="Loại dataset: synthetic, vietnamese, vietlish, iev, base")
-    parser.add_argument("--manifest_path", type=str, default="dataset/manifest.jsonl", help="Đường dẫn tới file manifest")
+    parser.add_argument("--manifest_path", type=str, default="dataset/manifest_all.jsonl", help="Đường dẫn tới file manifest")
     parser.add_argument("--audio_root", type=str, default="dataset/", help="Đường dẫn tới thư   mục chứa audio")
     
     args = parser.parse_args()
