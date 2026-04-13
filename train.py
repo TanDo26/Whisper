@@ -191,6 +191,7 @@ class Trainer:
         max_epochs:   int   = 30,
         save_dir:     str   = "checkpoints",
         model_name:   str   = "whisper_transformer",
+        resume_from:  Optional[str] = None,
     ):
         self.model        = model.to(device)
         self.train_loader = train_loader
@@ -211,7 +212,22 @@ class Trainer:
         self.history = {
             "train_loss": [], "val_loss": [], "val_per": []
         }
+        self.start_epoch = 1
         self.best_per = float("inf")
+
+        if resume_from and Path(resume_from).is_file():
+            print(f"Loading checkpoint from {resume_from}...")
+            try:
+                checkpoint = torch.load(resume_from, map_location=device, weights_only=False)
+            except TypeError:
+                checkpoint = torch.load(resume_from, map_location=device)
+            self.model.load_state_dict(checkpoint["model_state"])
+            self.optimizer.load_state_dict(checkpoint["opt_state"])
+            if "scheduler_state" in checkpoint:
+                self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+            self.start_epoch = checkpoint["epoch"] + 1
+            self.best_per = checkpoint.get("per", float("inf"))
+            print(f"Resuming from epoch {self.start_epoch} with Best PER = {self.best_per:.2f}%")
 
     def train_epoch(self, epoch: int) -> float:
         self.model.train()
@@ -286,7 +302,7 @@ class Trainer:
         print(f" Trainable params: {trainable:,}")
         print(f"{'='*60}\n")
 
-        for epoch in range(1, self.max_epochs + 1):
+        for epoch in range(self.start_epoch, self.max_epochs + 1):
             t0 = time.time()
 
             train_loss = self.train_epoch(epoch)
@@ -325,6 +341,7 @@ class Trainer:
             "per":        per,
             "model_state": self.model.state_dict(),
             "opt_state":  self.optimizer.state_dict(),
+            "scheduler_state": self.scheduler.state_dict(),
         }, path)
         print(f"  ✓ Checkpoint saved → {path} (PER={per:.2f}%)")
 
@@ -451,6 +468,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_type", choices=["synthetic", "vietnamese", "vietlish", "iev", "base"], default="synthetic", help="Loại dataset: synthetic, vietnamese, vietlish, iev, base")
     parser.add_argument("--manifest_path", type=str, default="dataset/manifest_all.jsonl", help="Đường dẫn tới file manifest")
     parser.add_argument("--audio_root", type=str, default="dataset/", help="Đường dẫn tới thư   mục chứa audio")
+    parser.add_argument("--resume", type=str, default=None, help="Đường dẫn tới checkpoint để resume training")
     
     args = parser.parse_args()
 
@@ -476,6 +494,7 @@ if __name__ == "__main__":
             val_loader  =DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate_fn),
             device=args.device,
             max_epochs=args.epochs,
+            resume_from=args.resume,
         )
         trainer.fit()
 

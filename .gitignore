@@ -22,13 +22,6 @@ checkpoints/
 *.pt
 *.pth
 *.ckpt
-
-# ── Dataset (rất nặng, không commit) ──────────────────────────
-dataset/
-
-# ── Audio / Data files (không commit) ────────────────────────
-data/
-
 # ── Jupyter ────────────────────────────────────────────────────
 .ipynb_checkpoints/
 *.ipynb
