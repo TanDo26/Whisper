@@ -17,13 +17,26 @@ def main():
     parser.add_argument("--manifest_path", type=str, default="data/manifest.jsonl", help="Đường dẫn tới file manifest.jsonl")
     parser.add_argument("--audio_root", type=str, default="data/", help="Thư mục chứa các file audio (.wav)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Model architecture parameters (Must match the checkpoint!)
+    parser.add_argument("--d_model", type=int, default=512, help="Hidden dimension size")
+    parser.add_argument("--n_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--n_layers", type=int, default=8, help="Number of decoder layers")
+    parser.add_argument("--ffn_dim", type=int, default=2048, help="Feed-forward network dimension")
+    
     args = parser.parse_args()
 
     device = args.device
     print(f"Sử dụng thiết bị: {device}")
 
     # 1. Khởi tạo model và load checkpoint
-    model = WhisperTransformerPhoneme(freeze_encoder=False)
+    model = WhisperTransformerPhoneme(
+        d_model=args.d_model,
+        n_heads=args.n_heads,
+        n_dec_layers=args.n_layers,
+        ffn_dim=args.ffn_dim,
+        freeze_encoder=False
+    )
     
     if not os.path.exists(args.checkpoint):
         print(f"❌ Không tìm thấy checkpoint tại {args.checkpoint}!")
@@ -51,9 +64,6 @@ def main():
     print(f" Tổng số file: {len(ds)}")
     print("="*85 + "\n")
 
-    print(f"{'Text/Audio':<20} {'Reference':<30} {'Predicted':<30} PER%")
-    print("-" * 85)
-
     refs_all, hyps_all = [], []
 
     with torch.no_grad():
@@ -76,21 +86,17 @@ def main():
                 hyp  = [INV_VOCAB.get(idx, "?") for idx in preds[i]]
                 per  = compute_per([ref], [hyp])
                 
-                # Trích xuất 'text' (title) hoặc tên thay thế
-                if batch.get("texts") and batch["texts"][i]:
-                    word = batch["texts"][i]
-                else:
-                    word = f"sample_{len(refs_all)}"
+                # Trích xuất 'text'
+                word = batch["texts"][i] if batch.get("texts") and batch["texts"][i] else "N/A"
 
                 refs_all.append(ref)
                 hyps_all.append(hyp)
 
-                ref_str = " ".join(ref)[:28]
-                hyp_str = " ".join(hyp)[:28]
-                
-                # Cắt ngắn nếu quá dài
-                word_str = str(word)[:18] + ".." if len(str(word)) > 20 else str(word)
-                print(f"{word_str:<20} {ref_str:<30} {hyp_str:<30} {per:.1f}%")
+                print(f"[{len(refs_all):03d}] Text: {word}")
+                print(f"      True: {' '.join(ref)}")
+                print(f"      Pred: {' '.join(hyp)}")
+                print(f"      PER:  {per:.2f}%")
+                print("-" * 60)
 
     final_per = compute_per(refs_all, hyps_all)
     print("\n" + "="*85)

@@ -4,32 +4,25 @@ Bộ âm vị đại diện cho tiếng Việt và tiếng Anh (Cross-Lingual Ph
 Dựa trên Section 3.1 của paper.
 """
 
-# ── Âm vị tiếng Việt (53 categories) ────────────────────────────────────────
+# ── Âm vị tiếng Việt (IPA-based Cross-Lingual Set) ───────────────────────────
 
 VIETNAMESE_INITIALS = [
-    "b", "c", "ch", "d", "đ", "g", "gh", "gi", "h",
-    "k", "kh", "l", "m", "n", "ng", "ngh", "nh", "p",
-    "ph", "qu", "r", "s", "t", "th", "tr", "v", "x",
+    "b", "ɗ", "k", "c", "ʈ", "t", "tʰ", "ʂ", "s", "z", 
+    "r", "ɣ", "x", "h", "m", "n", "ɲ", "ŋ", "l", "v", "f", "w", "p"
 ]
 
-VIETNAMESE_MEDIALS = ["w"]  # âm đệm /w/ (oa, oe, uy...)
+VIETNAMESE_MEDIALS = ["w"]  # âm đệm /w/ 
 
 VIETNAMESE_NUCLEI = [
-    "a", "ă", "â", "e", "ê", "i", "o", "ô", "ơ",
-    "u", "ư", "y",
+    "a:", "a", "ɤ:", "ɤ", "ɔ:", "o:", "ɯ:", "u:", "i:", "ɛ:", "e:", "ə"
 ]
 
 VIETNAMESE_ENDINGS = [
-    "c", "ch", "m", "n", "ng", "nh", "p", "t",
+    "p", "t", "k", "c", "m", "n", "ɲ", "ŋ", "i", "o"
 ]
 
 VIETNAMESE_TONES = [
-    "-1",   # ngang (không dấu)
-    "-2",   # huyền  `
-    "-3",   # hỏi    ̉
-    "-4",   # sắc    ́
-    "-5",   # nặng   ̣
-    "-6",   # ngã    ̃
+    "-1", "-2", "-3", "-4", "-5", "-6"
 ]
 
 # ── Âm vị tiếng Anh không có trong tiếng Việt ───────────────────────────────
@@ -69,6 +62,11 @@ ENGLISH_ONLY_CONSONANTS = [
     "f",    # fine (tiếng Việt có ph nhưng không có f độc lập)
     "z",    # zone, buzz
     "ʃ",    # she, wash
+]
+
+# ── Âm vị bổ sung (English & special symbols) ──────────────────────────────
+EXTRA_PHONEMES = [
+    "j", "tʰ", "θ", "ð"
 ]
 
 # ── Ký tự đặc biệt (ranh giới, điều khiển) ──────────────────────────────────
@@ -112,6 +110,11 @@ def build_vocabulary() -> dict:
         for p in group:
             if p not in vocab:
                 vocab.append(p)
+
+    # Âm vị bổ sung khác
+    for p in EXTRA_PHONEMES:
+        if p not in vocab:
+            vocab.append(p)
 
     return {tok: idx for idx, tok in enumerate(vocab)}
 

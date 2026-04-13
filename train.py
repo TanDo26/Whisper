@@ -187,7 +187,8 @@ class Trainer:
         val_loader:   DataLoader,
         device:       str = "cpu",
         lr:           float = 1e-3,
-        gamma:        float = 0.95,      # ExponentialLR decay
+        factor:       float = 0.5,      # ReduceLROnPlateau decay factor
+        patience:     int   = 2,        # Reduced patience for faster LR updates
         max_epochs:   int   = 30,
         save_dir:     str   = "checkpoints",
         model_name:   str   = "whisper_transformer",
@@ -204,9 +205,9 @@ class Trainer:
 
         # Chỉ optimize các param không bị freeze
         trainable = [p for p in model.parameters() if p.requires_grad]
-        self.optimizer = torch.optim.AdamW(trainable, lr=lr, weight_decay=1e-4)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
-            self.optimizer, gamma=gamma
+        self.optimizer = torch.optim.Adam(trainable, lr=lr, weight_decay=1e-3)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode="min", factor=factor, patience=patience
         )
 
         self.history = {
@@ -307,7 +308,7 @@ class Trainer:
 
             train_loss = self.train_epoch(epoch)
             val_loss, val_per = self.evaluate()
-            self.scheduler.step()
+            self.scheduler.step(val_per)
 
             elapsed = time.time() - t0
             lr_now  = self.optimizer.param_groups[0]["lr"]
@@ -329,6 +330,11 @@ class Trainer:
             if val_per < self.best_per:
                 self.best_per = val_per
                 self._save_checkpoint(epoch, val_per)
+            
+            # Tự động dừng nếu LR quá nhỏ (coi như = 0)
+            if lr_now < 1e-7:
+                print(f"\n[INFO] Learning Rate ({lr_now:.8f}) đã tiến về 0. Dừng training sớm.")
+                break
 
         print(f"\nBest PER: {self.best_per:.2f}%")
         self._save_history()
@@ -470,6 +476,15 @@ if __name__ == "__main__":
     parser.add_argument("--audio_root", type=str, default="dataset/", help="Đường dẫn tới thư   mục chứa audio")
     parser.add_argument("--resume", type=str, default=None, help="Đường dẫn tới checkpoint để resume training")
     
+    # Hyperparameters
+    parser.add_argument("--d_model", type=int, default=512, help="Hidden dimension size")
+    parser.add_argument("--n_heads", type=int, default=8, help="Number of attention heads")
+    parser.add_argument("--n_layers", type=int, default=8, help="Number of decoder layers")
+    parser.add_argument("--ffn_dim", type=int, default=2048, help="Feed-forward network dimension")
+    parser.add_argument("--dropout", type=float, default=0.3, help="Higher dropout to prevent overfitting")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size (reduced for larger model)")
+    parser.add_argument("--patience", type=int, default=1, help="Faster LR decay response")
+    
     args = parser.parse_args()
 
     print(f"Device: {args.device}")
@@ -489,11 +504,19 @@ if __name__ == "__main__":
         tr_ds, val_ds = random_split(ds, [n_tr, n_val])
 
         trainer = Trainer(
-            model=WhisperTransformerPhoneme(freeze_encoder=False),
-            train_loader=DataLoader(tr_ds,  batch_size=8, shuffle=True,  collate_fn=collate_fn),
-            val_loader  =DataLoader(val_ds, batch_size=8, shuffle=False, collate_fn=collate_fn),
+            model=WhisperTransformerPhoneme(
+                d_model=args.d_model,
+                n_heads=args.n_heads,
+                n_dec_layers=args.n_layers,
+                ffn_dim=args.ffn_dim,
+                dropout=args.dropout,
+                freeze_encoder=False
+            ),
+            train_loader=DataLoader(tr_ds,  batch_size=args.batch_size, shuffle=True,  collate_fn=collate_fn),
+            val_loader  =DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn),
             device=args.device,
             max_epochs=args.epochs,
+            patience=args.patience,
             resume_from=args.resume,
         )
         trainer.fit()

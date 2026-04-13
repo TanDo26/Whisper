@@ -25,6 +25,15 @@ import os
 os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
 os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "1")
 
+# Add local FFmpeg to PATH for torchcodec to load successfully
+# Ensures DLLs are found without needing global Windows PATH changes
+ffmpeg_bin = os.path.abspath(os.path.join("ffmpeg_shared", "ffmpeg-master-latest-win64-gpl-shared", "bin"))
+if os.path.exists(ffmpeg_bin):
+    os.environ["PATH"] = ffmpeg_bin + os.pathsep + os.environ["PATH"]
+    # For Python 3.8+ on Windows, os.add_dll_directory explicitly allows ctypes to find it
+    if hasattr(os, "add_dll_directory"):
+        os.add_dll_directory(ffmpeg_bin)
+
 import sys
 import io
 import json
@@ -223,7 +232,6 @@ def download_common_voice():
 
     for lang_code, lang_name, phoneme_mode in [
         ("vi", "common_voice_vi", "vi"),
-        ("en", "common_voice_en", "en"),
     ]:
         print(f"\n  -- Language: {lang_code} --", flush=True)
 
@@ -234,23 +242,11 @@ def download_common_voice():
 
         try:
             ds = load_dataset(
-                "mozilla-foundation/common_voice_17_0",
-                lang_code,
-                trust_remote_code=True,
-                token=True,
+                "hataphu/common-voice-corpus-20",
             )
         except Exception as e:
-            print(f"  [WARN] common_voice_17_0/{lang_code} failed: {e}")
-            print("  Trying common_voice_11_0 ...")
-            try:
-                ds = load_dataset(
-                    "mozilla-foundation/common_voice_11_0",
-                    lang_code,
-                    trust_remote_code=True,
-                )
-            except Exception as e2:
-                print(f"  [ERROR] Failed to load Common Voice {lang_code}: {e2}")
-                continue
+            print(f"  [ERROR] Failed to load Common Voice {lang_code}: {e}")
+            continue
 
         total = 0
         with open(manifest_path, "w", encoding="utf-8") as mf:
@@ -275,6 +271,60 @@ def download_common_voice():
                 total += n
 
         print(f"  [CommonVoice-{lang_code}] Done: {total} samples → {out_dir}", flush=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  NEW. LIBRISPEECH (HuggingFace: en)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def download_librispeech():
+    print("\n" + "="*60, flush=True)
+    print("  Downloading LibriSpeech (en) ...")
+    print("="*60, flush=True)
+
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        print("  [ERROR] Missing 'datasets'. Run: pip install datasets")
+        return
+
+    out_dir   = DATASET_ROOT / "librispeech_en"
+    audio_dir = out_dir / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = out_dir / "manifest.jsonl"
+
+    try:
+        ds = load_dataset(
+            "openslr/librispeech_asr",
+            "clean",
+        )
+    except Exception as e:
+        print(f"  [ERROR] Failed to load LibriSpeech: {e}")
+        return
+
+    total = 0
+    with open(manifest_path, "w", encoding="utf-8") as mf:
+        for split_name, split_ds in ds.items():
+            print(f"    Split: {split_name} ({len(split_ds)} samples)", flush=True)
+
+            def fields(item, sn):
+                text = item.get("text", "")
+                return {
+                    "text":     text,
+                    "phoneme":  text_to_phoneme(text, mode="en") if text else [],
+                    "source":   "librispeech",
+                    "split":    sn,
+                    "language": "en",
+                }
+
+            n = _process_hf_split_parallel(
+                split_ds, split_name, audio_dir,
+                "ls_en", mf, fields,
+                start_idx=total,
+            )
+            total += n
+
+    print(f"  [LibriSpeech] Done: {total} samples → {out_dir}", flush=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -562,8 +612,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sources",
         nargs="+",
-        default=["vlsp2020", "common_voice", "fosd", "vivos"],
-        choices=["vlsp2020", "common_voice", "fosd", "vivos"],
+        default=["vlsp2020", "common_voice", "librispeech", "fosd", "vivos"],
+        choices=["vlsp2020", "common_voice", "librispeech", "fosd", "vivos"],
         help="Datasets to download (default: all)",
     )
     parser.add_argument(
@@ -582,10 +632,11 @@ if __name__ == "__main__":
     print(f"  hf_transfer   : {os.environ.get('HF_HUB_ENABLE_HF_TRANSFER', '0')}")
     print("=" * 60, flush=True)
 
-    if "vlsp2020"     in args.sources: download_vlsp2020()
-    if "common_voice" in args.sources: download_common_voice()
-    if "fosd"         in args.sources: download_fosd()
-    if "vivos"        in args.sources: download_vivos()
+    if "vlsp2020"       in args.sources: download_vlsp2020()
+    if "common_voice"   in args.sources: download_common_voice()
+    if "librispeech"    in args.sources: download_librispeech()
+    if "fosd"           in args.sources: download_fosd()
+    if "vivos"          in args.sources: download_vivos()
 
     merge_all_manifests()
 
