@@ -133,7 +133,8 @@ class PhonemeDatasetBase(Dataset):
         else:
             waveform = waveform.t()
         mel = audio_to_mel(waveform, sr)                  # (T, 80)
-        labels = encode_phonemes(item["phoneme"])         # (L,)
+        phoneme_list = item.get("phonemes", item.get("phoneme", []))
+        labels = encode_phonemes(phoneme_list)            # (L,)
 
         return {
             "mel":    mel,
